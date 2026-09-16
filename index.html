@@ -644,17 +644,14 @@
     <button id="adminCloseBtn">关闭</button>
   </div>
 
-  <!-- 1. 销售设置 -->
   <section>
     <h3>销售设置</h3>
     <label>销售微信号</label>
     <input id="cfgSalesId">
-
     <label>销售微信二维码图片</label>
     <input type="file" id="cfgQRFile" accept="image/*">
     <div id="qrPreview" style="margin-top:8px;text-align:center"></div>
     <button class="btn btn-sec" id="clearQRBtn">清除二维码图片</button>
-
     <div style="margin-top:12px;padding-top:12px;border-top:1px dashed rgba(255,215,0,0.2)">
       <div class="switch-row">
         <span>强制口令验证</span>
@@ -669,7 +666,6 @@
     </div>
   </section>
 
-  <!-- 2. 页面外观 -->
   <section>
     <h3>页面外观</h3>
     <label>页面标题</label>
@@ -697,7 +693,6 @@
     </div>
   </section>
 
-  <!-- 3. 时间窗口 + 公众号保护 -->
   <section>
     <h3>活动时间窗口</h3>
     <div class="info-box">
@@ -729,7 +724,6 @@
     <button class="btn" id="saveBaseBtn">保存基础设置</button>
   </section>
 
-  <!-- 4. 盲盒 -->
   <section>
     <h3>盲盒设置</h3>
     <p style="font-size:11px;color:#887799;margin-bottom:8px">
@@ -740,7 +734,6 @@
     <button class="btn" id="saveBoxesBtn">保存盲盒配置</button>
   </section>
 
-  <!-- 5. 名单 -->
   <section>
     <h3>参与者名单（<span id="recCount">0</span> 人，已核销 <span id="recVerified">0</span>）</h3>
     <div id="recordList"></div>
@@ -766,6 +759,9 @@
 <script>
 (function() {
   'use strict';
+
+  /* ================= 后端地址 ================= */
+  var API_BASE = 'https://before.githubpage.com';
 
   /* ================= 默认配置 ================= */
   function defaultPrizes() {
@@ -886,7 +882,7 @@
   var step = 1;
   var drawing = false;
   var sliderReady = false;
-  var salesCodeVerified = false; // 本会话是否已通过口令
+  var salesCodeVerified = false;
 
   /* ================= 工具 ================= */
   function $(id) { return document.getElementById(id); }
@@ -1021,11 +1017,9 @@
 
   /* ================= 应用页面外观 ================= */
   function applyPageAppearance() {
-    // 标题
     $('heroTitle').textContent = CFG.pageTitle || DEFAULT_CFG.pageTitle;
     $('heroSubtitle').textContent = CFG.pageSubtitle || DEFAULT_CFG.pageSubtitle;
 
-    // 背景
     var body = document.body;
     if (CFG.pageBgType === 'color' && CFG.pageBgColor) {
       body.style.background = CFG.pageBgColor;
@@ -1062,7 +1056,6 @@
       fallback.style.display = 'flex';
     }
 
-    // 口令区显示控制
     if (CFG.salesCodeEnabled) {
       $('salesCodeArea').hidden = false;
     } else {
@@ -1104,13 +1097,11 @@
         inner.className = 'box-inner';
 
         if (box.image) {
-          // 有图：图片背景 + 半透明遮罩
           inner.style.backgroundImage = 'url(' + box.image + ')';
           inner.style.backgroundSize = 'cover';
           inner.style.backgroundPosition = 'center';
           inner.className += ' has-image';
         } else {
-          // 无图：颜色渐变
           inner.style.background = 'linear-gradient(160deg, ' + (box.color || '#ff6b6b') + ' 0%, #1a1025 130%)';
         }
 
@@ -1136,21 +1127,18 @@
 
     bindEvents();
 
-    // 1) 检查来源
     var srcCheck = checkSource();
     if (!srcCheck.ok) {
       showBlock(srcCheck);
       return;
     }
 
-    // 2) 检查时间窗口
     var timeCheck = checkTimeWindow();
     if (!timeCheck.ok) {
       showBlock(timeCheck);
       return;
     }
 
-    // 3) 已参与过？
     if (!ME) {
       var rec = findMyRecord();
       if (rec) {
@@ -1179,8 +1167,21 @@
     } else {
       setPanel('panel-1');
     }
-    renderBoxGrid();
-    renderSalesQR();
+
+    // 从后端拉配置，再渲染盲盒和二维码
+    fetch(API_BASE + '/config')
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (data.ok && data.config && data.config.boxes && data.config.boxes.length) {
+          CFG.boxes = data.config.boxes;
+        }
+        renderBoxGrid();
+        renderSalesQR();
+      })
+      .catch(function() {
+        renderBoxGrid();
+        renderSalesQR();
+      });
   }
 
   /* ================= 事件绑定 ================= */
@@ -1199,7 +1200,6 @@
 
     $('swSalesCode').onclick = toggleSalesCodeSwitch;
 
-    // 背景类型选择
     var bgOpts = document.querySelectorAll('.bg-option');
     for (var i = 0; i < bgOpts.length; i++) {
       bgOpts[i].onclick = onBgOptionClick;
@@ -1217,7 +1217,7 @@
     $('resetMeBtn').onclick = resetMe;
   }
 
-  /* ================= 步骤1 → 步骤2（含口令验证） ================= */
+  /* ================= 步骤1 → 步骤2 ================= */
   function onGoStep2Click() {
     if (CFG.salesCodeEnabled && !salesCodeVerified) {
       var code = ($('salesCodeInput').value || '').trim();
@@ -1235,7 +1235,6 @@
     goStep(2);
   }
 
-  /* ================= 步骤 ================= */
   function goStep(n) {
     step = n;
     setPanel('panel-' + n);
@@ -1274,7 +1273,7 @@
     }
   }
 
-  /* ================= 抽奖 ================= */
+  /* ================= 抽奖（接后端） ================= */
   function selectBox(idx, el) {
     if (drawing || ME) return;
     if (step < 2) return;
@@ -1301,27 +1300,12 @@
 
   function doOpenBox(idx) {
     var box = CFG.boxes[idx];
-    var prize = pickPrize(box.prizes);
-
-    var fresh = loadCfg();
-    if (fresh.boxes[idx]) {
-      for (var i = 0; i < fresh.boxes[idx].prizes.length; i++) {
-        if (fresh.boxes[idx].prizes[i].name === prize.name) {
-          var t = fresh.boxes[idx].prizes[i];
-          if (Number(t.stock) > 0) t.stock = Number(t.stock) - 1;
-          break;
-        }
-      }
-      saveCfg(fresh);
-      CFG = fresh;
-    }
 
     var overlay = document.createElement('div');
     overlay.className = 'open-overlay';
     var boxEl = document.createElement('div');
     boxEl.className = 'open-box';
 
-    // 优先用盲盒照片
     if (box.image) {
       boxEl.style.backgroundImage = 'url(' + box.image + ')';
       boxEl.style.backgroundSize = 'cover';
@@ -1335,87 +1319,70 @@
     overlay.appendChild(boxEl);
     document.body.appendChild(overlay);
 
-    setTimeout(function() {
-      boxEl.className = 'open-box opened';
-      // 恢复纯色背景显示奖品
-      boxEl.style.backgroundImage = '';
-      boxEl.style.color = '';
-      boxEl.style.background = 'linear-gradient(160deg, ' + (box.color || '#ff6b6b') + ' 0%, #1a1025 130%)';
-
-      if (prize.image) {
-        boxEl.innerHTML = '<img src="' + prize.image + '" alt="">';
-      } else {
-        boxEl.textContent = prize.emoji || '🎁';
+    fetch(API_BASE + '/draw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fingerprint: DEVICE_ID, boxIndex: idx })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (!data.ok) {
+        if (overlay.parentNode) document.body.removeChild(overlay);
+        drawing = false;
+        var items = document.querySelectorAll('.box-item');
+        for (var i = 0; i < items.length; i++) items[i].style.pointerEvents = '';
+        showToast(data.msg || '抽奖失败');
+        return;
       }
 
-      var time = new Date().toLocaleString('zh-CN');
-      var rec = loadRec();
-      var exists = false;
-      for (var i = 0; i < rec.length; i++) {
-        if (rec[i].deviceId === DEVICE_ID) { exists = true; break; }
-      }
-      if (!exists) {
-        rec.push({
-          deviceId: DEVICE_ID,
-          time: time,
-          boxIndex: idx,
-          box: box.name,
-          prize: prize.name,
-          emoji: prize.emoji || '🎁',
-          desc: prize.desc || '',
-          image: prize.image || '',
-          verified: false,
-          verifiedTime: null
-        });
-        saveRec(rec);
-      }
-
-      ME = {
-        deviceId: DEVICE_ID,
-        boxIndex: idx,
-        boxName: box.name,
-        prize: {
-          name: prize.name,
-          emoji: prize.emoji || '🎁',
-          desc: prize.desc || '',
-          image: prize.image || ''
-        },
-        time: time,
-        verified: false,
-        verifiedTime: null
-      };
-      saveMe(ME);
+      var prize = data.prize;
 
       setTimeout(function() {
-        if (overlay.parentNode) document.body.removeChild(overlay);
-        showResult(prize);
-        $('stepsBar').hidden = true;
-        renderDonePage();
-        setPanel('panel-done');
-      }, 700);
-    }, 1100);
-  }
+        boxEl.className = 'open-box opened';
+        boxEl.style.backgroundImage = '';
+        boxEl.style.color = '';
+        boxEl.style.background = 'linear-gradient(160deg, ' + (box.color || '#ff6b6b') + ' 0%, #1a1025 130%)';
 
-  function pickPrize(prizes) {
-    if (!prizes || !prizes.length) {
-      return { name: '谢谢参与', emoji: '😢', desc: '', image: '' };
-    }
-    var pool = [];
-    for (var i = 0; i < prizes.length; i++) {
-      if (Number(prizes[i].stock) > 0) pool.push(prizes[i]);
-    }
-    var list = pool.length ? pool : prizes;
-    var total = 0;
-    for (var i = 0; i < list.length; i++) {
-      total += (Number(list[i].weight) || 0);
-    }
-    if (total <= 0) return list[0];
-    var r = Math.random() * total;
-    for (var i = 0; i < list.length; i++) {
-      r -= (Number(list[i].weight) || 0);
-      if (r <= 0) return list[i];
-    }
-    return list[list.length - 1];
+        if (prize.image) {
+          boxEl.innerHTML = '<img src="' + prize.image + '" alt="">';
+        } else {
+          boxEl.textContent = prize.emoji || '🎁';
+        }
+
+        var time = new Date().toLocaleString('zh-CN');
+
+        ME = {
+          deviceId: DEVICE_ID,
+          boxIndex: idx,
+          boxName: box.name,
+          prize: {
+            name: prize.name,
+            emoji: prize.emoji || '🎁',
+            desc: prize.desc || '',
+            image: prize.image || ''
+          },
+          time: time,
+          verified: false,
+          verifiedTime: null
+        };
+        saveMe(ME);
+
+        setTimeout(function() {
+          if (overlay.parentNode) document.body.removeChild(overlay);
+          showResult(prize);
+          $('stepsBar').hidden = true;
+          renderDonePage();
+          setPanel('panel-done');
+        }, 700);
+      }, 1100);
+    })
+    .catch(function() {
+      if (overlay.parentNode) document.body.removeChild(overlay);
+      drawing = false;
+      var items = document.querySelectorAll('.box-item');
+      for (var i = 0; i < items.length; i++) items[i].style.pointerEvents = '';
+      showToast('网络错误，请重试');
+    });
   }
 
   /* ================= 我的奖品页 ================= */
@@ -1586,12 +1553,10 @@
     $('cfgPageSubtitle').value = CFG.pageSubtitle || '';
     $('cfgBgColor').value = CFG.pageBgColor || '#1a1025';
 
-    // 开关
     var sw = $('swSalesCode');
     if (CFG.salesCodeEnabled) sw.className = 'switch on';
     else sw.className = 'switch';
 
-    // 背景类型
     var bgType = CFG.pageBgType || 'default';
     var opts = document.querySelectorAll('.bg-option');
     for (var i = 0; i < opts.length; i++) {
@@ -1626,7 +1591,6 @@
     renderSalesQR();
   }
 
-  /* ================= 开关 ================= */
   function toggleSalesCodeSwitch() {
     var sw = $('swSalesCode');
     if (sw.className.indexOf('on') >= 0) {
@@ -1638,7 +1602,6 @@
     }
   }
 
-  /* ================= 背景选项 ================= */
   function onBgOptionClick() {
     var type = this.getAttribute('data-bg');
     var opts = document.querySelectorAll('.bg-option');
@@ -1691,7 +1654,6 @@
     showToast('已清除，记得保存');
   }
 
-  /* ================= 基础设置保存 ================= */
   function saveBaseConfig() {
     CFG.salesId  = ($('cfgSalesId').value || '').trim() || DEFAULT_CFG.salesId;
     CFG.salesCode = ($('cfgSalesCode').value || '').trim();
@@ -1704,7 +1666,6 @@
     CFG.pageSubtitle = ($('cfgPageSubtitle').value || '').trim() || DEFAULT_CFG.pageSubtitle;
     CFG.pageBgColor = $('cfgBgColor').value || '#1a1025';
 
-    // 校验时间
     var s = parseLocalDateTime(CFG.startTime);
     var e = parseLocalDateTime(CFG.endTime);
     if (s && e && s >= e) {
@@ -1712,7 +1673,6 @@
       return;
     }
 
-    // 校验口令
     if (CFG.salesCodeEnabled && !CFG.salesCode) {
       showToast('已开启口令，请填写口令内容');
       return;
@@ -1728,7 +1688,6 @@
     showToast('基础设置已保存');
   }
 
-  /* ================= 二维码上传 ================= */
   function onQRFileChange(e) {
     var file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -1809,7 +1768,6 @@
         el.appendChild(body);
         wrap.appendChild(el);
 
-        // 初始化盒子图片预览
         var previewBox = body.querySelector('.box-img-preview');
         function renderBoxImgPreview() {
           var img = el.getAttribute('data-image') || '';
