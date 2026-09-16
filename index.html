@@ -1980,65 +1980,78 @@
     renderBoxesEditor();
     showToast('盲盒配置已保存');
   }
-
+ 
   /* ================= 名单 ================= */
   function renderRecords() {
-    var rec = loadRec();
-    var verifiedCount = 0;
-    for (var i = 0; i < rec.length; i++) {
-      if (rec[i].verified) verifiedCount++;
-    }
-    $('recCount').textContent = rec.length;
-    $('recVerified').textContent = verifiedCount;
+    fetch(API_BASE + '/records')
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        var rec = data.records || [];
+        var verifiedCount = 0;
+        for (var i = 0; i < rec.length; i++) {
+          if (rec[i].verified) verifiedCount++;
+        }
+        $('recCount').textContent = rec.length;
+        $('recVerified').textContent = verifiedCount;
 
-    var wrap = $('recordList');
-    if (!rec.length) {
-      wrap.innerHTML = '<div class="empty">暂无参与记录</div>';
-      return;
-    }
+        var wrap = $('recordList');
+        if (!rec.length) {
+          wrap.innerHTML = '<div class="empty">暂无参与记录</div>';
+          return;
+        }
 
-    var html = '';
-    for (var i = 0; i < rec.length; i++) {
-      (function(idx) {
-        var r = rec[idx];
-        var statusHtml = r.verified
-          ? '<span class="ri-status yes">已核销</span>'
-          : '<span class="ri-status no">未核销</span>';
-        var btnText = r.verified ? '取消核销' : '手动核销';
-        var btnClass = r.verified ? 'ri-btn undo' : 'ri-btn';
-        html += '<div class="rec-item">' +
-          '<div class="ri-row"><span>#' + (idx + 1) + ' · ' + esc(r.time) + '</span>' + statusHtml + '</div>' +
-          '<div><b>' + esc(r.prize) + '</b> · ' + esc(r.box || '') + '</div>' +
-          '<div style="font-size:10px;color:#776688">设备：' + esc((r.deviceId || '').slice(0, 12)) + '...' +
-            (r.verifiedTime ? ' · 核销于 ' + esc(r.verifiedTime) : '') + '</div>' +
-          '<button class="' + btnClass + '" data-idx="' + idx + '" type="button">' + btnText + '</button>' +
-        '</div>';
-      })(i);
-    }
-    wrap.innerHTML = html;
+        var html = '';
+        for (var i = 0; i < rec.length; i++) {
+          (function(r) {
+            var statusHtml = r.verified
+              ? '<span class="ri-status yes">已核销</span>'
+              : '<span class="ri-status no">未核销</span>';
+            var btnText = r.verified ? '取消核销' : '手动核销';
+            var btnClass = r.verified ? 'ri-btn undo' : 'ri-btn';
+            html += '<div class="rec-item">' +
+              '<div class="ri-row"><span>#' + r.id + ' · ' + esc(r.time) + '</span>' + statusHtml + '</div>' +
+              '<div><b>' + esc(r.prize) + '</b> · ' + esc(r.box || '') + '</div>' +
+              '<div style="font-size:10px;color:#776688">设备：' + esc((r.fingerprint || '').slice(0, 12)) + '...' +
+                (r.verified_time ? ' · 核销于 ' + esc(r.verified_time) : '') + '</div>' +
+              '<button class="' + btnClass + '" data-id="' + r.id + '" data-verified="' + (r.verified ? '1' : '0') + '" type="button">' + btnText + '</button>' +
+            '</div>';
+          })(rec[i]);
+        }
+        wrap.innerHTML = html;
 
-    var btns = wrap.querySelectorAll('.ri-btn');
-    for (var i = 0; i < btns.length; i++) {
-      btns[i].onclick = function() {
-        var idx = Number(this.getAttribute('data-idx'));
-        toggleVerify(idx);
-      };
-    }
+        var btns = wrap.querySelectorAll('.ri-btn');
+        for (var i = 0; i < btns.length; i++) {
+          btns[i].onclick = function() {
+            var id = this.getAttribute('data-id');
+            var verified = this.getAttribute('data-verified') === '1';
+            toggleVerify(id, !verified);
+          };
+        }
+      })
+      .catch(function() {
+        $('recordList').innerHTML = '<div class="empty">加载失败，请检查网络</div>';
+      });
   }
 
-  function toggleVerify(idx) {
-    var rec = loadRec();
-    if (!rec[idx]) return;
-    rec[idx].verified = !rec[idx].verified;
-    rec[idx].verifiedTime = rec[idx].verified ? new Date().toLocaleString('zh-CN') : null;
-    saveRec(rec);
-
-    if (rec[idx].deviceId === DEVICE_ID && ME) {
-      ME.verified = rec[idx].verified;
-      ME.verifiedTime = rec[idx].verifiedTime;
-      saveMe(ME);
-    }
-    renderRecords();
+  function toggleVerify(id, verified) {
+    var time = verified ? new Date().toLocaleString('zh-CN') : null;
+    fetch(API_BASE + '/records', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, verified: verified, verified_time: time })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        renderRecords();
+        showToast(verified ? '已核销' : '已取消核销');
+      } else {
+        showToast('操作失败');
+      }
+    })
+    .catch(function() {
+      showToast('网络错误');
+    });
   }
 
   /* ================= 导出 Excel ================= */
