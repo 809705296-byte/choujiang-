@@ -2151,11 +2151,24 @@
   }
 
   function clearRecords() {
-    if (!confirm('确定清空所有记录？不可恢复')) return;
-    saveRec([]);
-    renderRecords();
-    $('csvOut').value = '';
-    showToast('已清空');
+    if (!confirm('确定清空所有记录？不可恢复。会同时清空云端数据。')) return;
+    fetch(API_BASE + '/records', {
+      method: 'DELETE'
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        saveRec([]);
+        renderRecords();
+        $('csvOut').value = '';
+        showToast('已清空云端和本地记录');
+      } else {
+        showToast('清空失败：' + (data.error || '未知错误'));
+      }
+    })
+    .catch(function() {
+      showToast('网络错误，清空失败');
+    });
   }
 
   function resetMe() {
